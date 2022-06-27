@@ -1,0 +1,344 @@
+---
+title: "Pre-registration for Group [insert group number]"
+author: "1234567, 2345678, 3456789, 4567890, 09887653, 9876543" #replace with GUIDS 
+output: word_document
+---
+
+#### 1. Load in packages and data
+
+```{r}
+library(tidyverse)
+
+demo <- read_csv("demographics_2021_final.csv")
+mslq <- read_csv("MSLQ_2021_final.csv")
+```
+
+#### 2. Clean up the data
+
+Run the below code - don't change anything. This code will clean up the Experimentum data a little bit to help you on your way. 
+
+```{r}
+demo_final <- demo %>% 
+  group_by(user_id, q_id) %>% 
+  filter(session_id == min(session_id), endtime == min(endtime)) %>% 
+  filter(row_number() == 1) %>% 
+  ungroup() %>% 
+  filter(user_status %in% c("guest", "registered")) %>%
+  select(user_id, user_sex, user_age, q_name, dv) %>%
+  pivot_wider(names_from = q_name, values_from = dv)
+
+mslq_final <- mslq %>% 
+  group_by(user_id, q_id) %>% 
+  filter(session_id == min(session_id), endtime == min(endtime)) %>% 
+  filter(row_number() == 1) %>% 
+  ungroup() %>% 
+  filter(user_status %in% c("guest", "registered")) %>%
+  select(user_id, user_sex, user_age, q_name, dv) %>%
+  arrange(q_name) %>%
+  pivot_wider(names_from = q_name, values_from = dv)
+
+```
+
+#### 3. Join together the data files by their common columns
+
+```{r}
+all_dat <- inner_join(x = demo_final, 
+                      y = mslq_final, 
+                      by = c("user_id", "user_sex", "user_age"))
+```
+
+#### 4. Use select to retain only the variables you need for your chosen research design (including the user ID).
+
+```{r}
+summarydata <- select(.data = all_dat, 
+                      user_id,
+                      user_sex,
+                      user_age,
+                      year,
+                      course,
+                      help_1, 
+                      help_2, 
+                      help_3, 
+                      help_4, 
+                      self_efficacy_1,
+                      self_efficacy_2,
+                      self_efficacy_3,
+                      self_efficacy_4,
+                      self_efficacy_5,
+                      self_efficacy_6,
+                      self_efficacy_7,
+                      self_efficacy_8)
+```
+
+#### 5. If necessary, use filter to retain only the observations you need, for example, you might need to delete participants above a certain age, or only use mature students etc.
+```{r}
+#create year_labels: 1-5 undergraduate, 6 postgraduate
+library(tidyverse)
+summarydata_mut1 <- mutate(summarydata, 
+                    year_labels = recode(year, "1" = "undergraduate", "2" = "undergraduate", "3" = "undergraduate", "4" = "undergraduate", "5" = "undergraduate", "6" = "postgraduate"))
+```
+
+
+```{r}
+library(psych)
+library(tidyverse)
+# make them become factors
+summarydata_mut2 <- summarydata_mut1 %>%
+  mutate(user_id = as.factor(user_id), 
+         year = as.factor(year),
+         year_labels = as.factor(year_labels))
+
+#clean the NA except user_id and user_age, exclude all data that are missing
+data_listwise<- drop_na(summarydata_mut2, -user_id, -user_age, -user_sex)
+
+```
+
+
+#### 6. Use `summary` or `str` to check what type of variable each variable is. Recode any necessary variables as factors and, if you would like to, change numeric codes (e.g., 1 for native speaker) into words to make it easier to read the output. 
+
+```{r}
+
+```
+
+#### 7. Calculate the mean score for each participant for each sub-scale. There are a few ways you can do this but helpfully the Experimentum documentation provides example code to make this easier, you just need to adapt it for the variables you need. You may also want to change the `na.rm = TRUE` for the calculation of means depending on whether you want to only include participants who completed all questions.
+
+At the top of the code chunk below, change `eval = FALSE` to `eval = TRUE` once you have amended your code. The reason it is currently set to FALSE is to allow the file to knit.
+
+
+```{r eval = TRUE}
+dat_means <- data_listwise %>% # change data to the name of the data object you want to work from
+  gather(var, val, help_1:help_4) %>% # change question_1:question_5 to select the questions for your 1st sub-scale 
+  group_by_at(vars(-val, -var)) %>% # group by everything except the val and var columns, don't change this 
+  summarise(help_seeking = mean(val, na.rm = TRUE)) %>% # change anxiety_mean to the name of your 1st sub-scale
+  ungroup() %>% # always ungroup! 
+  gather(var, val, self_efficacy_1:self_efficacy_8) %>% # change question_1:question_5 to select the questions for your 2nd scale
+  group_by_at(vars(-val, -var)) %>% 
+  summarise(self_efficacy = mean(val, na.rm = TRUE)) %>% # does not return sums with missing items 
+  ungroup() 
+```
+
+#### 8. Now you have the dataset in the format that you need for analysis (you could actually combine all of the above steps together in one mega pipe-line of code, but only do that if you're feeling confident). Next, you should visualise the data for each analysis.
+
+T-test visualisation
+
+```{r}
+library(dplyr)
+#Gender information
+dat_means_sex <- filter(dat_means, 
+                 user_sex %in% c("male",
+                             "female", "nonbinary"))
+group_by(dat_means_sex, user_sex) %>%
+  summarise(
+    count = n(),
+    mean = mean(help_seeking, na.rm = TRUE),
+    sd = sd(help_seeking, na.rm = TRUE)
+  )
+#age information
+
+dat_age <- drop_na(dat_means_sex, -user_id, -user_sex)
+sd(dat_age$user_age)
+
+
+#descriptive
+dat_means_year <- filter(dat_means, 
+                 year_labels %in% c("undergraduate",
+                             "postgraduate"))
+group_by(dat_means_year, year_labels) %>%
+  summarise(
+    count = n(),
+    mean = mean(help_seeking, na.rm = TRUE),
+    sd = sd(help_seeking, na.rm = TRUE),
+    median = median(help_seeking, na.rm = TRUE),
+    skewness = skewness(help_seeking, na.rm = FALSE))
+  
+
+#t test visualization
+
+dat_means_1 <- filter(dat_means, 
+                 year_labels %in% c("undergraduate",
+                             "postgraduate"))
+
+group_by(dat_means_1, year_labels) %>%
+  summarise(
+    count = n(),
+    mean = mean(help_seeking, na.rm = TRUE),
+    sd = sd(help_seeking, na.rm = TRUE)
+  )
+
+
+dat_means_1 %>%
+ggplot(aes(x = year_labels, y = help_seeking)) +
+  geom_violin(trim = FALSE) +
+  geom_boxplot(aes(fill = year_labels), width = .2, show.legend = FALSE) + 
+  stat_summary(geom = "pointrange", fun.data = "mean_cl_normal")  +
+  labs(x = "Group", y = "Help Seeking Score") +
+  geom_jitter()
+
+```
+
+Correlation visualisation
+
+```{r}
+ggplot(data = dat_means_1, aes(x = help_seeking, y = self_efficacy)) +
+  geom_point()+
+  geom_smooth(method = lm)
+```
+
+
+#### 9. Now you should check that the data meets the assumptions of the tests you want to conduct.
+
+T-test assumptions
+```{r}
+#check variances
+#p value more than 0.05 means that the variances of two samples are not significant
+undergraduate_variance = subset(as.data.frame(dat_means_1), year_labels=='undergraduate')[,'help_mean']
+postgraduate_variance = subset(as.data.frame(dat_means_1), year_labels=='postgraduate')[,'help_mean']
+var.test(undergraduate_variance,postgraduate_variance, ratio = 1, alternative = c("two.sided"))
+```
+
+```{r}
+#undergraduate
+library(car)
+library(dplyr)
+
+undergraduate_hs_residuals <- dat_means_1 %>%
+  filter(year_labels == "undergraduate") %>%
+  mutate(group_resid = help_seeking - mean(help_seeking)) %>%
+  select(group_resid)
+
+qqPlot(undergraduate_hs_residuals$group_resid)
+
+#Normality-undregraduate
+undergraduate_help <- filter(dat_means_1, 
+                 year_labels %in% c("undergraduate"))
+qqPlot(x = undergraduate_help$help_seeking) 
+#Normality-postgraduate
+postgraduate_help <- filter(dat_means_1, 
+                 year_labels %in% c("postgraduate"))
+qqPlot(x = postgraduate_help$help_seeking) 
+```
+
+```{r}
+#postgraduate
+library(car)
+library(dplyr)
+
+postgraduate_hs_residuals <- dat_means_1 %>%
+  filter(year_labels == "postgraduate") %>%
+  mutate(group_resid = help_seeking - mean(help_seeking)) %>%
+  select(group_resid)
+
+qqPlot(postgraduate_hs_residuals$group_resid)
+```
+
+Correlation assumptions
+
+```{r}
+#Normality:"Our data presents to be negatively skewed."
+library(car)
+
+is.na(dat_means_1)
+
+ggplot(data = dat_means_1, aes(x = help_seeking)) +
+  geom_histogram()
+
+ggplot(data = dat_means_1, aes(x = self_efficacy)) +
+  geom_histogram()
+
+qqPlot(x = dat_means_1$help_seeking) 
+qqPlot(x = dat_means_1$self_efficacy)
+
+shapiro.test(x = dat_means_1$help_seeking)
+shapiro.test(x = dat_means_1$self_efficacy)
+
+library(correlation)
+correlation(data = dat_means_1, 
+            select = "help_seeking", 
+            select2 = "self_efficacy",  
+            method = "pearson", 
+            alternative = "two.sided")
+#Linearity and homoscedasticity
+ggplot(data = dat_means_1, aes(x = help_seeking, y = self_efficacy)) +
+  geom_point()+
+  geom_smooth(method = lm)
+```
+
+
+#### 10. Finally, you can conduct your statistical analyses. Don't forget to calculate effect sizes for the t-tests!
+
+T-test analysis
+
+```{r}
+#effect size and power analysis
+library(pwr)
+library(effectsize)
+t.test(help_seeking ~ year_labels, 
+                      paired = FALSE,
+                      data = dat_means_1,
+                      alternative = "two.sided")
+#effect size: 0.22
+
+help_mean_d <- cohens_d(help_seeking ~ year_labels, 
+                      pooled_sd = FALSE, 
+                      data = dat_means_1)
+hire_d <- NULL
+impression_d <- NULL
+
+#minimum sample size:326
+pwr.t.test(d = .22,
+           power = .8,
+           sig.level = .05,
+           alternative = "two.sided",
+           type = "two.sample") %>% 
+  pluck("n") %>%
+  ceiling()
+
+pwr.t2n.test(n1 = 14,
+             n2 = 81,
+             power = .8,
+             sig.level = .05,
+             alternative = "two.sided") %>%
+  pluck("d") %>%
+  round(3)
+```
+
+Correlation analysis
+
+
+```{r}
+#Spearman's rho
+spearman_cor_res <-cor.test(dat_means_1$help_seeking, dat_means_1$self_efficacy,  method = "spearman")
+spearman_cor_res
+
+#Pearson
+cor.test(dat_means_1$help_seeking, dat_means_1$self_efficacy)
+
+
+#minimum sample size:279
+pwr.r.test(r = .167,
+           power = .8,
+           sig.level = .05
+           ) %>%
+  pluck("n") %>%
+  ceiling()
+
+#correlatoin
+pwr.r.test(n = 95,
+           power = .8,
+           sig.level = .05
+           ) %>%
+  pluck("r") %>%
+  round(3)
+
+```
+
+```{r}
+#skewness
+library(moments)
+skewness(dat_means_1$help_mean)
+skewness(dat_means_1$self_efficacy_mean)
+
+
+```
+
+
